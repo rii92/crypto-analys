@@ -9,6 +9,33 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
+# Simple authentication
+def check_credentials():
+    """Returns `True` if the user entered correct credentials."""
+    # Define valid credentials
+    CREDENTIALS = {"admin": "indodax123", "user": "user123"}
+
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if not st.session_state["authenticated"]:
+        # Create a form for the login
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submit_button = st.form_submit_button("Login")
+            
+            if submit_button:
+                if username in CREDENTIALS and password == CREDENTIALS[username]:
+                    st.session_state["authenticated"] = True
+                    return True
+                else:
+                    st.error("😕 Invalid username or password")
+                    return False
+            return False
+    else:
+        return True
+
 class IndodaxHotFinder:
     def __init__(self):
         self.base_url = "https://indodax.com"
@@ -654,146 +681,160 @@ def main():
         layout="wide"
     )
     
-    st.title("Indodax Hot Finder 📈")
-    st.markdown("Find hot trading opportunities on Indodax cryptocurrency exchange")
-    
-    finder = IndodaxHotFinder()
-    
-    # Sidebar for settings
-    st.sidebar.header("Settings")
-    
-    interval_options = {
-        '1': '1 Minute',
-        '5': '5 Minutes',
-        '15': '15 Minutes',
-        '30': '30 Minutes',
-        '60': '1 Hour',
-        '240': '4 Hours',
-        '1D': '1 Day',
-        '1W': '1 Week'
-    }
-    
-    interval = st.sidebar.selectbox(
-        "Timeframe",
-        options=list(interval_options.keys()),
-        format_func=lambda x: interval_options[x],
-        index=4  # Default to 1 hour
-    )
-    
-    min_volume = st.sidebar.slider(
-        "Minimum 24h Volume (IDR)",
-        min_value=100000000,
-        max_value=10000000000,
-        value=1000000000,
-        step=100000000,
-        format="%d"
-    )
-    
-    top_n = st.sidebar.slider(
-        "Number of coins to display",
-        min_value=5,
-        max_value=50,
-        value=10
-    )
-    
-    # Single coin analysis
-    st.sidebar.header("Single Coin Analysis")
-    available_pairs = finder.get_pairs()
-    if available_pairs:
-        pair_symbols = [pair['symbol'] for pair in available_pairs]
-        selected_symbol = st.sidebar.selectbox(
-            "Select a coin",
-            options=pair_symbols,
-            index=0 if 'btc_idr' in pair_symbols else 0
+    # Simple login with username and password
+    if check_credentials():
+        # Main application UI
+        st.title("Indodax Hot Finder 📈")
+        st.markdown("Find hot trading opportunities on Indodax cryptocurrency exchange")
+        
+        finder = IndodaxHotFinder()
+        
+        # Sidebar for settings
+        st.sidebar.header("Settings")
+        
+        interval_options = {
+            '1': '1 Minute',
+            '5': '5 Minutes',
+            '15': '15 Minutes',
+            '30': '30 Minutes',
+            '60': '1 Hour',
+            '240': '4 Hours',
+            '1D': '1 Day',
+            '1W': '1 Week'
+        }
+        
+        interval = st.sidebar.selectbox(
+            "Timeframe",
+            options=list(interval_options.keys()),
+            format_func=lambda x: interval_options[x],
+            index=4  # Default to 1 hour
         )
         
-        if st.sidebar.button("Analyze Single Coin"):
-            with st.spinner(f"Analyzing {selected_symbol}..."):
-                df = finder.get_klines(selected_symbol, interval=interval)
-                if df is not None and not df.empty:
-                    df = finder.calculate_indicators(df)
-                    
-                    # Get current price
-                    tickers = finder.get_ticker_all()
-                    ticker_id = next((pair['ticker_id'] for pair in available_pairs if pair['symbol'] == selected_symbol), None)
-                    
-                    if ticker_id and ticker_id in tickers:
-                        current_price = float(tickers[ticker_id]['last'])
-                        price_levels = finder.get_price_levels(df, current_price)
-                        
-                        if price_levels:
-                            # Calculate potential score
-                            latest = df.iloc[-1]
-                            recent_volume = df['volume'].iloc[-1]
-                            avg_volume = df['volume'].mean()
-                            volume_surge = recent_volume / avg_volume if avg_volume > 0 else 1
-                            
-                            score_components = {
-                                'trend': 1 if latest['MA7'] > latest['MA25'] else 0,
-                                'momentum': 1 if latest['MACD'] > latest['Signal'] else 0,
-                                'volume': min(volume_surge / 2, 1),
-                                'rsi': 1 - abs(50 - latest['RSI']) / 50
-                            }
-                            
-                            potential_score = (
-                                score_components['trend'] * 0.3 +
-                                score_components['momentum'] * 0.3 +
-                                score_components['volume'] * 0.2 +
-                                score_components['rsi'] * 0.2
-                            )
-                            
-                            targets = finder.calculate_targets(
-                                current_price,
-                                price_levels['atr'],
-                                potential_score,
-                                interval
-                            )
-                            
-                            # Display analysis
-                            st.subheader(f"{selected_symbol.upper()} Analysis")
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.markdown(f"**Current Price:** Rp {current_price:,.0f}")
-                                st.markdown(f"**RSI:** {latest['RSI']:.2f}")
-                                st.markdown(f"**MACD:** {latest['MACD']:.6f}")
-                                st.markdown(f"**Signal:** {latest['Signal']:.6f}")
-                                st.markdown(f"**Potential Score:** {potential_score:.2f}")
-                            
-                            with col2:
-                                st.markdown("**Price Levels:**")
-                                st.markdown(f"• Support: Rp {price_levels['support']['moderate']:,.0f}")
-                                st.markdown(f"• Resistance: Rp {price_levels['resistance']['first']:,.0f}")
-                                st.markdown(f"• Stop Loss: Rp {targets['stop_loss']:,.0f}")
-                                st.markdown(f"• Target 1: Rp {targets['targets'][0]:,.0f}")
-                                st.markdown(f"• Target 2: Rp {targets['targets'][1]:,.0f}")
-                            
-                            # Technical Analysis Chart
-                            fig = finder.plot_technical_analysis_plotly(selected_symbol, df, price_levels, targets)
-                            if fig:
-                                st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Correlation Analysis
-                            corr_fig = finder.plot_correlation_plotly(selected_symbol, interval)
-                            if corr_fig:
-                                st.plotly_chart(corr_fig, use_container_width=True)
-                        else:
-                            st.error(f"Could not calculate price levels for {selected_symbol}")
-                    else:
-                        st.error(f"Could not get current price for {selected_symbol}")
-                else:
-                    st.error(f"Could not retrieve data for {selected_symbol}")
-    
-    # Main content - Hot coins finder
-    if st.button("Find Hot Coins"):
-        with st.spinner(f"Scanning market on {interval_options[interval]} timeframe..."):
-            hot_coins = finder.find_hot_coins(interval=interval, min_volume_idr=min_volume)
+        min_volume = st.sidebar.slider(
+            "Minimum 24h Volume (IDR)",
+            min_value=100000000,
+            max_value=10000000000,
+            value=1000000000,
+            step=100000000,
+            format="%d"
+        )
+        
+        top_n = st.sidebar.slider(
+            "Number of coins to display",
+            min_value=5,
+            max_value=50,
+            value=10
+        )
+        
+        # Single coin analysis
+        st.sidebar.header("Single Coin Analysis")
+        available_pairs = finder.get_pairs()
+        if available_pairs:
+            pair_symbols = [pair['symbol'] for pair in available_pairs]
+            selected_symbol = st.sidebar.selectbox(
+                "Select a coin",
+                options=pair_symbols,
+                index=0 if 'btc_idr' in pair_symbols else 0
+            )
             
-            if hot_coins:
-                st.success(f"Found {len(hot_coins)} coins with potential")
-                finder.display_analysis(hot_coins, top_n=top_n)
-            else:
-                st.warning("No hot coins found matching your criteria")
+            if st.sidebar.button("Analyze Single Coin"):
+                with st.spinner(f"Analyzing {selected_symbol}..."):
+                    df = finder.get_klines(selected_symbol, interval=interval)
+                    if df is not None and not df.empty:
+                        df = finder.calculate_indicators(df)
+                        
+                        # Get current price
+                        tickers = finder.get_ticker_all()
+                        ticker_id = next((pair['ticker_id'] for pair in available_pairs if pair['symbol'] == selected_symbol), None)
+                        
+                        if ticker_id and ticker_id in tickers:
+                            current_price = float(tickers[ticker_id]['last'])
+                            price_levels = finder.get_price_levels(df, current_price)
+                            
+                            if price_levels:
+                                # Calculate potential score
+                                latest = df.iloc[-1]
+                                recent_volume = df['volume'].iloc[-1]
+                                avg_volume = df['volume'].mean()
+                                volume_surge = recent_volume / avg_volume if avg_volume > 0 else 1
+                                
+                                score_components = {
+                                    'trend': 1 if latest['MA7'] > latest['MA25'] else 0,
+                                    'momentum': 1 if latest['MACD'] > latest['Signal'] else 0,
+                                    'volume': min(volume_surge / 2, 1),
+                                    'rsi': 1 - abs(50 - latest['RSI']) / 50
+                                }
+                                
+                                potential_score = (
+                                    score_components['trend'] * 0.3 +
+                                    score_components['momentum'] * 0.3 +
+                                    score_components['volume'] * 0.2 +
+                                    score_components['rsi'] * 0.2
+                                )
+                                
+                                targets = finder.calculate_targets(
+                                    current_price,
+                                    price_levels['atr'],
+                                    potential_score,
+                                    interval
+                                )
+                                
+                                # Display analysis
+                                st.subheader(f"{selected_symbol.upper()} Analysis")
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.markdown(f"**Current Price:** Rp {current_price:,.0f}")
+                                    st.markdown(f"**RSI:** {latest['RSI']:.2f}")
+                                    st.markdown(f"**MACD:** {latest['MACD']:.6f}")
+                                    st.markdown(f"**Signal:** {latest['Signal']:.6f}")
+                                    st.markdown(f"**Potential Score:** {potential_score:.2f}")
+                                
+                                with col2:
+                                    st.markdown("**Price Levels:**")
+                                    st.markdown(f"• Support: Rp {price_levels['support']['moderate']:,.0f}")
+                                    st.markdown(f"• Resistance: Rp {price_levels['resistance']['first']:,.0f}")
+                                    st.markdown(f"• Stop Loss: Rp {targets['stop_loss']:,.0f}")
+                                    st.markdown(f"• Target 1: Rp {targets['targets'][0]:,.0f}")
+                                    st.markdown(f"• Target 2: Rp {targets['targets'][1]:,.0f}")
+                                
+                                # Technical Analysis Chart
+                                fig = finder.plot_technical_analysis_plotly(selected_symbol, df, price_levels, targets)
+                                if fig:
+                                    st.plotly_chart(fig, use_container_width=True)
+                                
+                                # Correlation Analysis
+                                corr_fig = finder.plot_correlation_plotly(selected_symbol, interval)
+                                if corr_fig:
+                                    st.plotly_chart(corr_fig, use_container_width=True)
+                            else:
+                                st.error(f"Could not calculate price levels for {selected_symbol}")
+                        else:
+                            st.error(f"Could not get current price for {selected_symbol}")
+                    else:
+                        st.error(f"Could not retrieve data for {selected_symbol}")
+        
+        # Main content - Hot coins finder
+        if st.button("Find Hot Coins"):
+            with st.spinner(f"Scanning market on {interval_options[interval]} timeframe..."):
+                hot_coins = finder.find_hot_coins(interval=interval, min_volume_idr=min_volume)
+                
+                if hot_coins:
+                    st.success(f"Found {len(hot_coins)} coins with potential")
+                    finder.display_analysis(hot_coins, top_n=top_n)
+                else:
+                    st.warning("No hot coins found matching your criteria")
+    else:
+        st.title("Indodax Hot Finder 📈")
+        st.markdown("Please enter your credentials to access the dashboard")
+        st.markdown("Hint: Try username `admin` with password `indodax123`")
+        st.markdown("Or username `user` with password `user123`")
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
