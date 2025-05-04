@@ -826,9 +826,9 @@ def main():
                     st.warning("No hot coins found matching your criteria")
     else:
         st.title("Indodax Hot Finder 📈")
-        st.markdown("Please enter your credentials to access the dashboard")
-        st.markdown("Hint: Try username `admin` with password `indodax123`")
-        st.markdown("Or username `user` with password `user123`")
+        # st.markdown("Please enter your credentials to access the dashboard")
+        # st.markdown("Hint: Try username `admin` with password `indodax123`")
+        # st.markdown("Or username `user` with password `user123`")
 
 if __name__ == "__main__":
     main()
